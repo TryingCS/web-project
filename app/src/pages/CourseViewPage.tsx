@@ -1,3 +1,4 @@
+// CourseViewPage.tsx
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
@@ -11,7 +12,6 @@ import { Separator } from '@/components/ui/separator';
 import { Check, ChevronRight, ChevronLeft, Puzzle, Menu, X, BookOpen, Edit, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { TextBlock } from '@/components/blocks/TextBlock';
-import { PredictionBlock } from '@/components/blocks/PredictionBlock';
 import { QuizBlock } from '@/components/blocks/QuizBlock';
 import { FillBlankBlock } from '@/components/blocks/FillBlankBlock';
 import { YoutubeBlock } from '@/components/blocks/YoutubeBlock';
@@ -45,25 +45,10 @@ export function CourseViewPage() {
       const data = await api.getCourse(courseId);
       setCourse(data);
 
-      // Find first page to show
       if (data.sections && data.sections.length > 0) {
         const allPages = data.sections.flatMap(s => s.pages || []);
         if (allPages.length > 0) {
-          // Try to continue where left off
-          if (isAuthenticated) {
-            try {
-              const lastPageId = await api.getLastVisitedPage(courseId);
-              if (lastPageId) {
-                const lastPage = allPages.find(p => p.id === lastPageId);
-                if (lastPage) {
-                  await loadPage(lastPage.id);
-                  return;
-                }
-              }
-            } catch {
-              // Fall through to first page
-            }
-          }
+          // Always load the first page for now
           await loadPage(allPages[0].id);
         }
       }
@@ -124,7 +109,6 @@ export function CourseViewPage() {
       case 'text':
         return <TextBlock content={block.content as TextBlockContent} />;
       case 'prediction':
-        return <PredictionBlock content={block.content as PredictionBlockContent} />;
       case 'quiz':
         return <QuizBlock content={block.content as QuizBlockContent} />;
       case 'fill_blank':

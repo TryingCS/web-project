@@ -22,7 +22,7 @@ export function SliderBlock({ content }: SliderBlockProps) {
           <div className="w-8 h-8 bg-cyan-100 rounded-lg flex items-center justify-center">
             <Gauge className="h-4 w-4 text-cyan-600" />
           </div>
-          <h3 className="font-semibold text-gray-900">Check Yourself</h3>
+          <h3 className="font-semibold text-gray-900"><h3 className="font-semibold text-gray-900">Estimate the Range</h3></h3>
         </div>
 
         <p className="text-lg text-gray-800 mb-6 font-medium">{content.question}</p>

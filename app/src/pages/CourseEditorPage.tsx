@@ -9,16 +9,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, Edit, BookOpen, FileText, HelpCircle, Lightbulb, Edit3, Youtube, Gauge, Save, ArrowLeft, ArrowUp, ArrowDown, Puzzle } from 'lucide-react';
+import { Plus, Trash2, Edit, BookOpen, FileText, HelpCircle, Edit3, Youtube, Gauge, Save, ArrowLeft, ArrowUp, ArrowDown, Puzzle } from 'lucide-react';
 import { toast } from 'sonner';
 
 const BLOCK_TYPES: { type: BlockType; label: string; icon: React.ElementType }[] = [
   { type: 'text', label: 'Text (Markdown)', icon: FileText },
-  { type: 'prediction', label: 'Prediction', icon: Lightbulb },
   { type: 'quiz', label: 'Quiz', icon: HelpCircle },
   { type: 'fill_blank', label: 'Fill in Blank', icon: Edit3 },
   { type: 'youtube', label: 'YouTube Video', icon: Youtube },
-  { type: 'slider', label: 'Check Yourself Slider', icon: Gauge },
+  { type: 'slider', label: 'Slider (Estimate)', icon: Gauge },
 ];
 
 export function CourseEditorPage() {
@@ -65,10 +64,32 @@ export function CourseEditorPage() {
   const handleCreatePage = async () => {
     if (!selectedSection) return;
     try {
-      await api.createPage(selectedSection.id, { title: newPageTitle });
+      const newPage = await api.createPage(selectedSection.id, { title: newPageTitle });
       toast.success('Page created');
       setIsPageDialogOpen(false); setNewPageTitle('');
-      loadCourse();
+
+      // Optimistic: add the new page to the selected section
+      setSelectedSection(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          pages: [...(prev.pages || []), { ...newPage, blocks: [] }],
+        };
+      });
+      // Also reflect in course state
+      setCourse(prev => {
+        if (!prev || !prev.sections) return prev;
+        const updatedSections = prev.sections.map(s => {
+          if (s.id === selectedSection.id) {
+            return {
+              ...s,
+              pages: [...(s.pages || []), { ...newPage, blocks: [] }],
+            };
+          }
+          return s;
+        });
+        return { ...prev, sections: updatedSections };
+      });
     } catch { toast.error('Failed to create page'); }
   };
 
@@ -76,7 +97,9 @@ export function CourseEditorPage() {
     if (!confirm('Delete this section and all its pages?')) return;
     try {
       await api.deleteSection(sectionId);
-      toast.success('Section deleted'); loadCourse();
+      toast.success('Section deleted');
+      if (selectedSection?.id === sectionId) setSelectedSection(null);
+      loadCourse();
     } catch { toast.error('Failed to delete section'); }
   };
 
@@ -86,32 +109,54 @@ export function CourseEditorPage() {
       await api.deletePage(pageId);
       toast.success('Page deleted');
       if (selectedPage?.id === pageId) setSelectedPage(null);
-      loadCourse();
+      // Optimistic update
+      setSelectedSection(prev => {
+        if (!prev) return prev;
+        return { ...prev, pages: prev.pages?.filter(p => p.id !== pageId) || [] };
+      });
+      setCourse(prev => {
+        if (!prev || !prev.sections) return prev;
+        return {
+          ...prev,
+          sections: prev.sections.map(s => {
+            if (s.id === selectedSection?.id) {
+              return { ...s, pages: s.pages?.filter(p => p.id !== pageId) || [] };
+            }
+            return s;
+          }),
+        };
+      });
     } catch { toast.error('Failed to delete page'); }
   };
 
-  const handleDeleteBlock = async (blockId: number) => {
-    if (!confirm('Delete this block?')) return;
-    try {
-      await api.deleteBlock(blockId);
-      toast.success('Block deleted');
-      if (selectedPage) {
-        const page = await api.getPage(selectedPage.id);
-        setSelectedPage(page);
-      }
-    } catch { toast.error('Failed to delete block'); }
-  };
+  // --- Block CRUD with Optimistic Updates ---
 
   const handleCreateBlock = async () => {
     if (!selectedPage) return;
     try {
       const position = (selectedPage.blocks?.length || 0);
-      await api.createBlock(selectedPage.id, selectedBlockType, blockContent, position);
+      const newBlock = await api.createBlock(selectedPage.id, selectedBlockType, blockContent, position);
       toast.success('Block created');
       setIsBlockDialogOpen(false);
       setBlockContent({ markdown: '' });
-      const page = await api.getPage(selectedPage.id);
-      setSelectedPage(page);
+
+      // Optimistic: add to selected page
+      const updatedPage = {
+        ...selectedPage,
+        blocks: [...(selectedPage.blocks || []), newBlock],
+      };
+      setSelectedPage(updatedPage);
+      // Also update in course state
+      setCourse(prev => {
+        if (!prev || !prev.sections) return prev;
+        return {
+          ...prev,
+          sections: prev.sections.map(s => ({
+            ...s,
+            pages: s.pages?.map(p => (p.id === selectedPage.id ? updatedPage : p)),
+          })),
+        };
+      });
     } catch { toast.error('Failed to create block'); }
   };
 
@@ -121,42 +166,94 @@ export function CourseEditorPage() {
       await api.updateBlock(editingBlock.id, blockContent);
       toast.success('Block updated');
       setIsEditBlockDialogOpen(false);
+      const updatedBlock = { ...editingBlock, content: blockContent };
       setEditingBlock(null);
+
       if (selectedPage) {
-        const page = await api.getPage(selectedPage.id);
-        setSelectedPage(page);
+        const updatedPage = {
+          ...selectedPage,
+          blocks: selectedPage.blocks?.map(b => (b.id === updatedBlock.id ? updatedBlock : b)) || [],
+        };
+        setSelectedPage(updatedPage);
+        setCourse(prev => {
+          if (!prev || !prev.sections) return prev;
+          return {
+            ...prev,
+            sections: prev.sections.map(s => ({
+              ...s,
+              pages: s.pages?.map(p => (p.id === selectedPage?.id ? updatedPage : p)),
+            })),
+          };
+        });
       }
     } catch { toast.error('Failed to update block'); }
   };
 
-  const openEditBlock = (block: Block) => {
-    setEditingBlock(block);
-    setSelectedBlockType(block.type);
-    setBlockContent(block.content);
-    setIsEditBlockDialogOpen(true);
+  const handleDeleteBlock = async (blockId: number) => {
+    if (!confirm('Delete this block?')) return;
+    try {
+      await api.deleteBlock(blockId);
+      toast.success('Block deleted');
+      if (selectedPage) {
+        const updatedPage = {
+          ...selectedPage,
+          blocks: selectedPage.blocks?.filter(b => b.id !== blockId) || [],
+        };
+        setSelectedPage(updatedPage);
+        setCourse(prev => {
+          if (!prev || !prev.sections) return prev;
+          return {
+            ...prev,
+            sections: prev.sections.map(s => ({
+              ...s,
+              pages: s.pages?.map(p => (p.id === selectedPage?.id ? updatedPage : p)),
+            })),
+          };
+        });
+      }
+    } catch { toast.error('Failed to delete block'); }
   };
 
   const moveBlock = async (block: Block, direction: 'up' | 'down') => {
     if (!selectedPage?.blocks) return;
     const blocks = [...selectedPage.blocks].sort((a, b) => a.position - b.position);
     const idx = blocks.findIndex(b => b.id === block.id);
-    if (direction === 'up' && idx > 0) {
-      const other = blocks[idx - 1];
-      await api.updateBlockPosition(block.id, other.position);
-      await api.updateBlockPosition(other.id, block.position);
-    } else if (direction === 'down' && idx < blocks.length - 1) {
-      const other = blocks[idx + 1];
-      await api.updateBlockPosition(block.id, other.position);
-      await api.updateBlockPosition(other.id, block.position);
+    if (
+      (direction === 'up' && idx > 0) ||
+      (direction === 'down' && idx < blocks.length - 1)
+    ) {
+      const other = direction === 'up' ? blocks[idx - 1] : blocks[idx + 1];
+      // Swap positions locally
+      const newBlocks = blocks.map(b => {
+        if (b.id === block.id) return { ...b, position: other.position };
+        if (b.id === other.id) return { ...b, position: block.position };
+        return b;
+      });
+      const updatedPage = { ...selectedPage, blocks: newBlocks };
+      setSelectedPage(updatedPage);
+      try {
+        await api.updateBlockPosition(block.id, other.position);
+        await api.updateBlockPosition(other.id, block.position);
+      } catch {
+        // Revert on error by reloading the page
+        toast.error('Failed to reorder blocks');
+        const page = await api.getPage(selectedPage.id);
+        setSelectedPage(page);
+      }
     }
-    const page = await api.getPage(selectedPage.id);
-    setSelectedPage(page);
+  };
+
+  const openEditBlock = (block: Block) => {
+    const displayType = block.type === 'prediction' ? 'quiz' : block.type;
+    setEditingBlock(block);
+    setSelectedBlockType(displayType as BlockType);
+    setBlockContent(block.content);
+    setIsEditBlockDialogOpen(true);
   };
 
   const getDefaultBlockContent = (type: BlockType): BlockContent => {
     switch (type) {
       case 'text': return { markdown: '# Heading\n\nWrite your content here using **markdown** formatting.' };
-      case 'prediction':
       case 'quiz':
         return { question: 'What is your question?', options: ['Option 1', 'Option 2', 'Option 3'], correct: 0, explanation: 'Explain the correct answer here.' };
       case 'fill_blank':
@@ -184,7 +281,6 @@ export function CourseEditorPage() {
             <p className="text-xs text-gray-500">Use **bold**, *italic*, # headings, - lists, [links](url)</p>
           </div>
         );
-      case 'prediction':
       case 'quiz':
         const qz = blockContent as PredictionBlockContent;
         return (
@@ -349,7 +445,7 @@ export function CourseEditorPage() {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
                           {(() => {
-                            const Icon = BLOCK_TYPES.find(t => t.type === block.type)?.icon;
+                            const Icon = BLOCK_TYPES.find(t => t.type === block.type || (block.type === 'prediction' && t.type === 'quiz'))?.icon;
                             return Icon ? <Icon className="h-5 w-5 text-gray-600" /> : null;
                           })()}
                         </div>

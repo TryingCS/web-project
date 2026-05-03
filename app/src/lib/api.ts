@@ -26,7 +26,7 @@ class ApiClient {
     return data;
   }
 
-  // Auth
+    // Auth
   async register(credentials: RegisterCredentials): Promise<User> {
     return this.request<User>('/register', { method: 'POST', body: JSON.stringify(credentials) });
   }
@@ -39,7 +39,9 @@ class ApiClient {
   async getCurrentUser(): Promise<User> {
     return this.request<User>('/me');
   }
-
+  async getUserProfile(userId: number): Promise<User> {
+    return this.request<User>(`/users/${userId}`);
+  }
   // Courses
   async getCourses(): Promise<Course[]> {
     return this.request<Course[]>('/courses');
@@ -112,6 +114,18 @@ class ApiClient {
   async getCourseProgress(courseId: number): Promise<CourseProgress> {
     return this.request<CourseProgress>(`/courses/${courseId}/progress`);
   }
+  // Admin
+async getAllUsers(): Promise<User[]> {
+  return this.request<User[]>('/users');
+}
+async deleteUser(userId: number): Promise<{ message: string }> {
+  return this.request<{ message: string }>(`/users/${userId}`, { method: 'DELETE' });
+}
+
+// Profile update
+async updateProfile(userId: number, data: { bio?: string; username?: string }): Promise<User> {
+  return this.request<User>(`/users/${userId}`, { method: 'PUT', body: JSON.stringify(data) });
+}
   async markPageComplete(pageId: number): Promise<{ message: string }> {
     return this.request<{ message: string }>(`/pages/${pageId}/complete`, { method: 'POST' });
   }

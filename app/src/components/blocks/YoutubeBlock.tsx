@@ -8,7 +8,7 @@ interface YoutubeBlockProps {
 
 export function YoutubeBlock({ content }: YoutubeBlockProps) {
   const videoId = content.videoId;
-  const embedUrl = `https://www.youtube.com/embed/${videoId}`;
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?modestbranding=1&rel=0`;
 
   return (
     <Card className="shadow-md overflow-hidden">
