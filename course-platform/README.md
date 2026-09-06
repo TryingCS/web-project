@@ -206,6 +206,3 @@ The development server will start at `http://localhost:5173`
 - Safari 14+
 - Edge 90+
 
-## License
-
-MIT License
